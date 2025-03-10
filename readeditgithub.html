@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit File GitHub</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f8f8f8;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-top: 30px;
+      color: #2c3e50;
+    }
+    .container {
+      width: 90%;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    h2 {
+      color: #2980b9;
+      font-size: 1.5rem;
+    }
+    select, textarea {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      font-size: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background-color: #fafafa;
+    }
+    textarea {
+      min-height: 200px;
+      resize: vertical;
+    }
+    button {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 20px;
+      font-size: 1.1rem;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:active {
+      background-color: #388e3c;
+    }
+    .file-select {
+      margin-top: 20px;
+    }
+    .file-select select {
+      font-size: 1rem;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 30px;
+      font-size: 0.9rem;
+      color: #7f8c8d;
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+      h1 {
+        font-size: 1.8rem;
+      }
+      h2 {
+        font-size: 1.3rem;
+      }
+      button {
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Menampilkan dan Mengedit File di GitHub</h1>
+
+  <div class="container">
+    <div class="file-select">
+      <h2>Pilih File untuk Diedit</h2>
+      <select id="fileList" onchange="loadFile()">
+        <option value="">Pilih file...</option>
+        <!-- Daftar file akan diisi di sini -->
+      </select>
+    </div>
+
+    <div>
+      <h2>Isi File yang Dipilih</h2>
+      <!-- Hapus atribut readonly supaya kolom dapat diubah -->
+      <textarea id="fileContent"></textarea><br>
+      <button onclick="updateFile()">Update File di GitHub</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>Powered by <strong>GitHub API</strong></p>
+  </div>
+
+  <script>
+    const owner = "niddumulu";  // Ganti dengan username GitHub Anda
+    const repo = "testing";  // Ganti dengan nama repositori Anda
+    const branch = "main";  // Ganti dengan nama branch jika berbeda
+    const token = "YOUR_PERSONAL_ACCESS_TOKEN";  // Masukkan token akses GitHub Anda di sini
+
+    // Fungsi untuk mengambil daftar file dalam folder repositori
+    function loadFileList() {
+      fetch(`https://api.github.com/repos/${owner}/${repo}/contents?ref=${branch}`)
+        .then(response => response.json())
+        .then(data => {
+          const fileList = document.getElementById("fileList");
+          data.forEach(item => {
+            if (item.type === 'file') {
+              const option = document.createElement("option");
+              option.value = item.path;
+              option.textContent = item.name;
+              fileList.appendChild(option);
+            }
+          });
+        })
+        .catch(error => console.error('Error loading file list:', error));
+    }
+
+    // Fungsi untuk mengambil konten file yang dipilih
+    function loadFile() {
+      const filePath = document.getElementById("fileList").value;
+      if (!filePath) return;  // Jika belum ada file yang dipilih, jangan lanjutkan
+
+      fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`)
+        .then(response => response.json())
+        .then(data => {
+          const content = atob(data.content);  // GitHub API mengembalikan isi file dalam format base64
+          document.getElementById('fileContent').value = content;
+        })
+        .catch(error => console.error('Error loading file:', error));
+    }
+
+    // Fungsi untuk mengupdate file di GitHub
+    function updateFile() {
+      const filePath = document.getElementById("fileList").value;
+      const content = document.getElementById('fileContent').value;
+      const encodedContent = btoa(content);  // Encoding konten ke base64 untuk GitHub API
+
+      // Ambil SHA dari file untuk update
+      fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`)
+        .then(response => response.json())
+        .then(data => {
+          const sha = data.sha;  // Ambil SHA dari file yang ada
+
+          // Setup data untuk commit baru
+          const commitData = {
+            message: "Update file",  // Pesan commit
+            content: encodedContent,
+            sha: sha,
+            branch: branch
+          };
+
+          // Kirim permintaan PUT untuk mengupdate file di GitHub
+          fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `token ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(commitData)
+          })
+            .then(response => response.json())
+            .then(data => {
+              if (data.content) {
+                alert('File berhasil diperbarui di GitHub!');
+              }
+            })
+            .catch(error => console.error('Error updating file:', error));
+        })
+        .catch(error => console.error('Error retrieving file SHA:', error));
+    }
+
+    // Load daftar file saat halaman pertama kali dimuat
+    loadFileList();
+  </script>
+</body>
+</html>
