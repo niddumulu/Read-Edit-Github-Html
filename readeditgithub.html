@@ -40,7 +40,7 @@
       background-color: #fafafa;
     }
     textarea {
-      min-height: 200px;
+      min-height: 160px;
       resize: vertical;
     }
     button {
@@ -73,6 +73,19 @@
       font-size: 0.9rem;
       color: #7f8c8d;
     }
+    .notification {
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 5px;
+      color: white;
+      display: none;
+    }
+    .success {
+      background-color: #28a745;
+    }
+    .error {
+      background-color: #dc3545;
+    }
     @media (max-width: 600px) {
       .container {
         padding: 10px;
@@ -103,10 +116,13 @@
 
     <div>
       <h2>Isi File yang Dipilih</h2>
-      <!-- Hapus atribut readonly supaya kolom dapat diubah -->
       <textarea id="fileContent"></textarea><br>
       <button onclick="updateFile()">Update File di GitHub</button>
+      <button onclick="createFile()">Buat File Baru</button>
+      <button onclick="deleteFile()">Hapus File</button>
     </div>
+
+    <div id="notification" class="notification"></div>
   </div>
 
   <div class="footer">
@@ -183,12 +199,108 @@
             .then(response => response.json())
             .then(data => {
               if (data.content) {
-                alert('File berhasil diperbarui di GitHub!');
+                showNotification("File berhasil diperbarui di GitHub!", "success");
               }
             })
-            .catch(error => console.error('Error updating file:', error));
+            .catch(error => {
+              console.error('Error updating file:', error);
+              showNotification("Terjadi kesalahan saat memperbarui file.", "error");
+            });
         })
-        .catch(error => console.error('Error retrieving file SHA:', error));
+        .catch(error => {
+          console.error('Error retrieving file SHA:', error);
+          showNotification("Terjadi kesalahan saat mendapatkan file SHA.", "error");
+        });
+    }
+
+    // Fungsi untuk membuat file baru
+    function createFile() {
+      const filePath = prompt("Masukkan nama file baru (termasuk ekstensi):");
+      if (!filePath) return;
+
+      const content = document.getElementById('fileContent').value;
+      const encodedContent = btoa(content);  // Encoding konten ke base64 untuk GitHub API
+
+      const commitData = {
+        message: "Buat file baru",  // Pesan commit
+        content: encodedContent,
+        branch: branch
+      };
+
+      // Kirim permintaan PUT untuk membuat file baru di GitHub
+      fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(commitData)
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.content) {
+            showNotification("File baru berhasil dibuat di GitHub!", "success");
+            loadFileList();  // Update daftar file setelah membuat file baru
+          }
+        })
+        .catch(error => {
+          console.error('Error creating file:', error);
+          showNotification("Terjadi kesalahan saat membuat file.", "error");
+        });
+    }
+
+    // Fungsi untuk menghapus file
+    function deleteFile() {
+      const filePath = document.getElementById("fileList").value;
+      if (!filePath) return;
+
+      // Ambil SHA dari file yang akan dihapus
+      fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`)
+        .then(response => response.json())
+        .then(data => {
+          const sha = data.sha;
+
+          // Setup data untuk menghapus file
+          const commitData = {
+            message: "Hapus file",  // Pesan commit
+            sha: sha,
+            branch: branch
+          };
+
+          // Kirim permintaan DELETE untuk menghapus file di GitHub
+          fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `token ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(commitData)
+          })
+            .then(response => response.json())
+            .then(data => {
+              if (data.content) {
+                showNotification("File berhasil dihapus dari GitHub!", "success");
+                loadFileList();  // Update daftar file setelah menghapus file
+              }
+            })
+            .catch(error => {
+              console.error('Error deleting file:', error);
+              showNotification("Terjadi kesalahan saat menghapus file.", "error");
+            });
+        })
+        .catch(error => {
+          console.error('Error retrieving file SHA for deletion:', error);
+          showNotification("Terjadi kesalahan saat mendapatkan file SHA untuk penghapusan.", "error");
+        });
+    }
+
+    // Fungsi untuk menampilkan notifikasi
+    function showNotification(message, type) {
+      const notification = document.getElementById("notification");
+      notification.textContent = message;
+      notification.className = `notification ${type}`;
+      notification.style.display = "block";
+      setTimeout(() => notification.style.display = "none", 5000); // Sembunyikan notifikasi setelah 5 detik
     }
 
     // Load daftar file saat halaman pertama kali dimuat
