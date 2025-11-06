@@ -3,173 +3,264 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Read & Edit GitHub HTML</title>
+<title>Edit File GitHub (Auto Repo + File)</title>
 <style>
-  body { font-family: Arial, sans-serif; background:#f7f7f7; margin:0; padding:20px; }
-  h1 { text-align:center; color:#2c3e50; }
-  .container { max-width:900px; margin:auto; background:white; padding:20px; border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,0.1); }
-  label { font-weight:bold; display:block; margin-top:10px; }
-  input, select, textarea { width:100%; padding:10px; margin-top:5px; border:1px solid #ccc; border-radius:5px; }
-  button { margin-top:10px; padding:10px 20px; border:none; background:#2980b9; color:white; border-radius:5px; cursor:pointer; }
-  button:hover { background:#3498db; }
-  textarea { min-height:180px; resize:vertical; }
-  .notification { margin-top:15px; padding:10px; color:white; border-radius:5px; display:none; }
-  .success { background:#2ecc71; }
-  .error { background:#e74c3c; }
+  body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; color: #333; }
+  .container { max-width: 900px; margin: 20px auto; background: #fff; padding: 20px;
+    border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  h1 { text-align: center; color: #2c3e50; }
+  select, input, textarea, button {
+    width: 100%; padding: 10px; margin-top: 8px;
+    border: 1px solid #ccc; border-radius: 5px; font-size: 1rem;
+  }
+  textarea { font-family: monospace; min-height: 300px; resize: vertical; }
+  button { background: #4CAF50; color: #fff; border: none; cursor: pointer; }
+  button:hover { background: #45a049; }
+  .danger { background: #c0392b; }
+  #branch { display: none; }
+  #loading { display: none; text-align: center; margin-top: 10px; color: #888; }
 </style>
 </head>
 <body>
-<h1>Read & Edit GitHub HTML</h1>
-
 <div class="container">
-  <label>GitHub Token (Private, tidak disimpan):</label>
-  <input type="password" id="tokenInput" placeholder="Masukkan Personal Access Token">
+  <h1>Editor File GitHub</h1>
 
-  <label>Owner (username GitHub):</label>
-  <input type="text" id="owner" value="niddumulu">
+  <input type="password" id="token" placeholder="Masukkan GitHub Token">
+  <div id="tokenStatus"></div>
+  <button onclick="saveToken()">💾 Simpan Token</button>
+  <button onclick="clearToken()" class="danger">❌ Hapus Token</button>
 
-  <label>Repository:</label>
-  <input type="text" id="repo" value="handphone">
-
-  <label>Branch:</label>
+  <input type="text" id="owner" placeholder="Username" readonly>
+  <select id="repoSelect"><option>Menunggu...</option></select>
   <input type="text" id="branch" value="main">
+  <div id="loading">⏳ Memuat data...</div>
 
-  <hr>
-  <label>Pilih File:</label>
-  <select id="fileList" onchange="loadFile()">
-    <option value="">-- Pilih file --</option>
-  </select>
+  <select id="fileList" onchange="onSelectFile()"><option>Menunggu...</option></select>
+  <button id="backButton" onclick="goBack()" style="display:none;background:#777;">⬅️ Kembali</button>
 
-  <label>Isi File:</label>
-  <textarea id="fileContent" placeholder="Isi file akan muncul di sini..."></textarea>
+    <div>
+      <!-- 🔹 Tambahkan toolbar kecil di atas editor -->
+      <div style="display:flex; gap:8px; margin-top:15px; align-items:center;">
+        <strong>📝 Editor File</strong>
+        <button onclick="clearEditor()" style="background:#e74c3c;">🧹 Hapus</button>
+        <button onclick="pasteFromClipboard()" style="background:#3498db;">📋 Paste</button>
+      </div>
 
-  <button onclick="updateFile()">💾 Update File</button>
-  <button onclick="createFile()">➕ Buat File Baru</button>
-  <button onclick="deleteFile()">🗑️ Hapus File</button>
-
-  <div id="notification" class="notification"></div>
+  <textarea id="fileContent" placeholder="Isi file..."></textarea>
+  <button onclick="updateFile()">🚀 Simpan ke GitHub</button>
 </div>
 
 <script>
-async function loadFileList() {
-  const token = document.getElementById("tokenInput").value.trim();
-  const owner = document.getElementById("owner").value.trim();
-  const repo = document.getElementById("repo").value.trim();
-  const branch = document.getElementById("branch").value.trim();
-  if (!token) return showNotification("Masukkan token terlebih dahulu!", "error");
+let currentPath = "";
 
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents?ref=${branch}`, {
+function getToken() {
+  return localStorage.getItem("github_token") || document.getElementById("token").value;
+}
+
+function showTokenStatus(saved) {
+  const el = document.getElementById("tokenStatus");
+  el.textContent = saved ? "✅ Token tersimpan" : "❌ Token belum tersimpan";
+  el.style.color = saved ? "green" : "red";
+}
+
+async function getUsernameFromToken() {
+  const token = getToken();
+  if (!token) return null;
+  const res = await fetch("https://api.github.com/user", {
     headers: { Authorization: `token ${token}` }
   });
   const data = await res.json();
-  const fileList = document.getElementById("fileList");
-  fileList.innerHTML = `<option value="">-- Pilih file --</option>`;
-  data.forEach(item => {
-    if (item.type === "file") {
-      const opt = document.createElement("option");
-      opt.value = item.path;
-      opt.textContent = item.name;
-      fileList.appendChild(opt);
-    }
-  });
+  if (data.login) {
+    document.getElementById("owner").value = data.login;
+    localStorage.setItem("github_user", data.login);
+    return data.login;
+  } else {
+    alert("Token tidak valid");
+    return null;
+  }
 }
 
-async function loadFile() {
-  const token = document.getElementById("tokenInput").value.trim();
-  const owner = document.getElementById("owner").value.trim();
-  const repo = document.getElementById("repo").value.trim();
-  const branch = document.getElementById("branch").value.trim();
-  const filePath = document.getElementById("fileList").value;
-  if (!filePath) return;
+async function loadRepos() {
+  const token = getToken();
+  const res = await fetch("https://api.github.com/user/repos?per_page=100", {
+    headers: { Authorization: `token ${token}` }
+  });
+  const data = await res.json();
+  const select = document.getElementById("repoSelect");
+  select.innerHTML = "";
+
+  if (!Array.isArray(data)) {
+    select.innerHTML = "<option>Gagal memuat repositori</option>";
+    return;
+  }
+
+  data.forEach(repo => {
+    const opt = document.createElement("option");
+    opt.value = repo.name;
+    opt.textContent = repo.name;
+    select.appendChild(opt);
+  });
+
+  const lastRepo = localStorage.getItem("last_repo");
+  if (lastRepo && data.some(r => r.name === lastRepo)) {
+    select.value = lastRepo;
+  }
+
+  // Event change REPO → muat ulang file list
+  select.onchange = async () => {
+    localStorage.setItem("last_repo", select.value);
+    currentPath = "";
+    await loadFileList();
+  };
+
+  await loadFileList();
+}
+
+async function loadFileList(path = "") {
+  const owner = document.getElementById("owner").value;
+  const repo = document.getElementById("repoSelect").value;
+  const branch = document.getElementById("branch").value;
+  const token = getToken();
+  const fileList = document.getElementById("fileList");
+  const loading = document.getElementById("loading");
+
+  if (!owner || !repo || !token) return;
+
+  loading.style.display = "block";
+  fileList.innerHTML = "<option>⏳ Memuat...</option>";
+
+  const url = path
+    ? `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`
+    : `https://api.github.com/repos/${owner}/${repo}/contents?ref=${branch}`;
+
+  try {
+    const res = await fetch(url, { headers: { Authorization: `token ${token}` } });
+    const data = await res.json();
+
+    fileList.innerHTML = "";
+    if (!Array.isArray(data)) throw new Error("Bukan array");
+
+    data.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item.path;
+      opt.textContent = item.type === "dir" ? "📁 " + item.name : "📄 " + item.name;
+      fileList.appendChild(opt);
+    });
+
+    currentPath = path;
+    document.getElementById("backButton").style.display = path ? "inline-block" : "none";
+
+    // Auto buka file pertama
+    const firstFile = data.find(i => i.type === "file");
+    if (firstFile) await loadFile(firstFile.path);
+
+  } catch (err) {
+    fileList.innerHTML = "<option>❌ Gagal memuat file</option>";
+  }
+
+  loading.style.display = "none";
+}
+
+function goBack() {
+  if (!currentPath) return;
+  const parts = currentPath.split("/");
+  parts.pop();
+  loadFileList(parts.join("/"));
+}
+
+function onSelectFile() {
+  const selected = document.getElementById("fileList").selectedOptions[0];
+  if (!selected) return;
+  const value = selected.value;
+  if (selected.textContent.startsWith("📁")) loadFileList(value);
+  else loadFile(value);
+}
+
+async function loadFile(filePath) {
+  const owner = document.getElementById("owner").value;
+  const repo = document.getElementById("repoSelect").value;
+  const branch = document.getElementById("branch").value;
+  const token = getToken();
+
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
     headers: { Authorization: `token ${token}` }
   });
   const data = await res.json();
-  document.getElementById("fileContent").value = atob(data.content);
+  if (data.content) {
+    document.getElementById("fileContent").value = atob(data.content);
+    localStorage.setItem("last_path", filePath);
+    localStorage.setItem("last_sha", data.sha);
+  }
 }
 
 async function updateFile() {
-  const token = document.getElementById("tokenInput").value.trim();
-  const owner = document.getElementById("owner").value.trim();
-  const repo = document.getElementById("repo").value.trim();
-  const branch = document.getElementById("branch").value.trim();
-  const filePath = document.getElementById("fileList").value;
-  const content = document.getElementById("fileContent").value;
-  if (!filePath || !content) return showNotification("Pilih file dan isi sebelum update!", "error");
-
-  const getFile = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
-    headers: { Authorization: `token ${token}` }
-  });
-  const fileData = await getFile.json();
-  const sha = fileData.sha;
-  const encoded = btoa(content);
+  const owner = document.getElementById("owner").value;
+  const repo = document.getElementById("repoSelect").value;
+  const branch = document.getElementById("branch").value;
+  const token = getToken();
+  const filePath = localStorage.getItem("last_path");
+  const sha = localStorage.getItem("last_sha");
+  const content = btoa(document.getElementById("fileContent").value);
 
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
     method: "PUT",
-    headers: { Authorization: `token ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ message: "Update file", content: encoded, sha, branch })
+    headers: {
+      Authorization: `token ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: `Update ${filePath} via Web Editor`,
+      content, sha, branch
+    })
   });
   const data = await res.json();
-  if (data.content) showNotification("✅ File berhasil diperbarui!", "success");
-  else showNotification("❌ Gagal memperbarui file!", "error");
+  alert(data.commit ? "✅ File berhasil diperbarui!" : "❌ Gagal menyimpan file!");
 }
 
-async function createFile() {
-  const token = document.getElementById("tokenInput").value.trim();
-  const owner = document.getElementById("owner").value.trim();
-  const repo = document.getElementById("repo").value.trim();
-  const branch = document.getElementById("branch").value.trim();
-  const newFile = prompt("Masukkan nama file baru (contoh: index.html):");
-  if (!newFile) return;
-  const content = btoa(document.getElementById("fileContent").value || "");
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${newFile}`, {
-    method: "PUT",
-    headers: { Authorization: `token ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ message: "Buat file baru", content, branch })
-  });
-  const data = await res.json();
-  if (data.content) {
-    showNotification("✅ File baru dibuat!", "success");
-    loadFileList();
-  } else showNotification("❌ Gagal membuat file!", "error");
+function saveToken() {
+  const token = document.getElementById("token").value;
+  if (!token) return alert("Masukkan token!");
+  localStorage.setItem("github_token", token);
+  showTokenStatus(true);
+  initLoad();
 }
 
-async function deleteFile() {
-  const token = document.getElementById("tokenInput").value.trim();
-  const owner = document.getElementById("owner").value.trim();
-  const repo = document.getElementById("repo").value.trim();
-  const branch = document.getElementById("branch").value.trim();
-  const filePath = document.getElementById("fileList").value;
-  if (!filePath) return;
-  if (!confirm(`Hapus file "${filePath}"?`)) return;
-
-  const getFile = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
-    headers: { Authorization: `token ${token}` }
-  });
-  const fileData = await getFile.json();
-  const sha = fileData.sha;
-
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
-    method: "DELETE",
-    headers: { Authorization: `token ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ message: "Hapus file", sha, branch })
-  });
-  const data = await res.json();
-  if (data.commit) {
-    showNotification("✅ File dihapus!", "success");
-    loadFileList();
-  } else showNotification("❌ Gagal menghapus file!", "error");
+function clearToken() {
+  localStorage.clear();
+  document.getElementById("token").value = "";
+  document.getElementById("owner").value = "";
+  showTokenStatus(false);
 }
 
-function showNotification(msg, type) {
-  const n = document.getElementById("notification");
-  n.textContent = msg;
-  n.className = `notification ${type}`;
-  n.style.display = "block";
-  setTimeout(() => n.style.display = "none", 4000);
+async function initLoad() {
+  const token = localStorage.getItem("github_token");
+  if (!token) return showTokenStatus(false);
+  document.getElementById("token").value = token;
+  showTokenStatus(true);
+  const user = await getUsernameFromToken();
+  if (user) await loadRepos();
 }
 
-document.getElementById("tokenInput").addEventListener("change", loadFileList);
+// 🔹 Fungsi untuk menghapus isi editor
+function clearEditor() {
+  if (confirm("Hapus semua isi editor?")) {
+    document.getElementById("fileContent").value = "";
+  }
+}
+
+// 🔹 Fungsi untuk paste teks dari clipboard
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    const textarea = document.getElementById("fileContent");
+    textarea.value += text;
+    alert("✅ Teks berhasil di-paste dari clipboard!");
+  } catch (err) {
+    alert("❌ Gagal membaca clipboard. Pastikan browser mengizinkan akses clipboard.");
+  }
+}
+
+window.onload = initLoad;
 </script>
 </body>
 </html>
