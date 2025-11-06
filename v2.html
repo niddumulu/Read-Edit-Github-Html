@@ -1,27 +1,32 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edit File GitHub (Smart Version)</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Edit File GitHub (Smart Version + Copy)</title>
 <style>
   body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; color: #333; }
   .container { max-width: 900px; margin: 20px auto; background: #fff; padding: 20px;
     border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-  h1 { text-align: center; color: #2c3e50; }
+  h1 { text-align: center; color: #2c3e50; margin: 0 0 12px 0; }
   select, input, textarea, button {
     width: 100%; padding: 10px; margin-top: 8px;
     border: 1px solid #ccc; border-radius: 5px; font-size: 1rem;
+    box-sizing: border-box;
   }
-  textarea { font-family: monospace; min-height: 320px; resize: vertical; background: #fefefe; }
+  textarea { min-height: 320px; resize: vertical; background: #fff; color: #222; font-family: Arial, sans-serif; }
   button { background: #4CAF50; color: #fff; border: none; cursor: pointer; }
   button:hover { background: #45a049; }
   .danger { background: #c0392b; }
   #branch { display: none; }
   #loading { display: none; text-align: center; margin-top: 10px; color: #888; }
   .toolbar { display:flex; gap:8px; margin-top:15px; align-items:center; flex-wrap:wrap; }
-  .filename { flex:1; font-weight:bold; color:#2c3e50; }
-  #fileInfo { font-size:0.9em; color:#555; margin-top:5px; }
+  .filename { flex:1; font-weight:bold; color:#2c3e50; word-break: break-all; }
+  #fileInfo { font-size:0.9em; color:#555; margin-top:6px; }
+  @media (max-width:480px) {
+    .toolbar { gap:6px; }
+    button { padding:8px; font-size:0.95rem; }
+  }
 </style>
 </head>
 <body>
@@ -35,18 +40,19 @@
 
   <input type="text" id="owner" placeholder="Username" readonly>
   <select id="repoSelect"><option>Menunggu...</option></select>
-  <input type="text" id="branch" value="main">
+  <input type="text" id="branch" value="main" />
   <div id="loading">⏳ Memuat data...</div>
 
   <select id="fileList" onchange="onSelectFile()"><option>Menunggu...</option></select>
   <button id="backButton" onclick="goBack()" style="display:none;background:#777;">⬅️ Kembali</button>
 
-  <!-- 🔹 Toolbar Editor -->
+  <!-- Toolbar Editor -->
   <div class="toolbar">
     <div class="filename" id="activeFile">Tidak ada file aktif</div>
     <button onclick="reloadFile()" style="background:#6c5ce7;">🔄 Reload</button>
     <button onclick="clearEditor()" style="background:#e74c3c;">🧹 Hapus</button>
     <button onclick="pasteFromClipboard()" style="background:#3498db;">📋 Paste</button>
+    <button onclick="copyToClipboard()" style="background:#27ae60;">📄 Copy</button>
   </div>
   <div id="fileInfo"></div>
 
@@ -58,19 +64,16 @@
 let currentPath = "";
 let activeFilePath = "";
 
-// Ambil token tersimpan
 function getToken() {
   return localStorage.getItem("github_token") || document.getElementById("token").value;
 }
 
-// Status token
 function showTokenStatus(saved) {
   const el = document.getElementById("tokenStatus");
   el.textContent = saved ? "✅ Token tersimpan" : "❌ Token belum tersimpan";
   el.style.color = saved ? "green" : "red";
 }
 
-// Ambil username dari token
 async function getUsernameFromToken() {
   const token = getToken();
   if (!token) return null;
@@ -78,7 +81,7 @@ async function getUsernameFromToken() {
     headers: { Authorization: `token ${token}` }
   });
   const data = await res.json();
-  if (data.login) {
+  if (data && data.login) {
     document.getElementById("owner").value = data.login;
     localStorage.setItem("github_user", data.login);
     return data.login;
@@ -88,10 +91,9 @@ async function getUsernameFromToken() {
   }
 }
 
-// Muat daftar repo
 async function loadRepos() {
   const token = getToken();
-  const res = await fetch("https://api.github.com/user/repos?per_page=100", {
+  const res = await fetch("https://api.github.com/user/repos?per_page=200", {
     headers: { Authorization: `token ${token}` }
   });
   const data = await res.json();
@@ -113,6 +115,8 @@ async function loadRepos() {
   const lastRepo = localStorage.getItem("last_repo");
   if (lastRepo && data.some(r => r.name === lastRepo)) {
     select.value = lastRepo;
+  } else {
+    select.selectedIndex = 0;
   }
 
   select.onchange = async () => {
@@ -124,7 +128,6 @@ async function loadRepos() {
   await loadFileList();
 }
 
-// Muat daftar file
 async function loadFileList(path = "") {
   const owner = document.getElementById("owner").value;
   const repo = document.getElementById("repoSelect").value;
@@ -139,8 +142,8 @@ async function loadFileList(path = "") {
   fileList.innerHTML = "<option>⏳ Memuat...</option>";
 
   const url = path
-    ? `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`
-    : `https://api.github.com/repos/${owner}/${repo}/contents?ref=${branch}`;
+    ? `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`
+    : `https://api.github.com/repos/${owner}/${repo}/contents?ref=${encodeURIComponent(branch)}`;
 
   try {
     const res = await fetch(url, { headers: { Authorization: `token ${token}` } });
@@ -159,10 +162,8 @@ async function loadFileList(path = "") {
     currentPath = path;
     document.getElementById("backButton").style.display = path ? "inline-block" : "none";
 
-    // Auto buka file pertama
     const firstFile = data.find(i => i.type === "file");
     if (firstFile) await loadFile(firstFile.path);
-
   } catch (err) {
     fileList.innerHTML = "<option>❌ Gagal memuat file</option>";
   }
@@ -170,7 +171,6 @@ async function loadFileList(path = "") {
   loading.style.display = "none";
 }
 
-// Tombol kembali
 function goBack() {
   if (!currentPath) return;
   const parts = currentPath.split("/");
@@ -178,52 +178,52 @@ function goBack() {
   loadFileList(parts.join("/"));
 }
 
-// Pilih file/folder
 function onSelectFile() {
   const selected = document.getElementById("fileList").selectedOptions[0];
   if (!selected) return;
   const value = selected.value;
-  if (selected.textContent.startsWith("📁")) loadFileList(value);
-  else loadFile(value);
+  if (selected.textContent && selected.textContent.startsWith("📁")) {
+    loadFileList(value);
+  } else {
+    loadFile(value);
+  }
 }
 
-// 🔹 Muat isi file
 async function loadFile(filePath) {
   const owner = document.getElementById("owner").value;
   const repo = document.getElementById("repoSelect").value;
   const branch = document.getElementById("branch").value;
   const token = getToken();
+  if (!owner || !repo || !filePath || !token) return;
 
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(branch)}`, {
     headers: { Authorization: `token ${token}` }
   });
   const data = await res.json();
 
-  if (data.content) {
+  if (data && data.content !== undefined) {
     const decoded = atob(data.content);
     const textarea = document.getElementById("fileContent");
     textarea.value = decoded;
-
     localStorage.setItem("last_path", filePath);
     localStorage.setItem("last_sha", data.sha);
     activeFilePath = filePath;
 
     document.getElementById("activeFile").textContent = `📄 ${filePath}`;
-    document.getElementById("fileInfo").textContent = `Tipe file: ${detectFileType(filePath)}, Ukuran: ${(data.size/1024).toFixed(1)} KB`;
+    document.getElementById("fileInfo").textContent = `Tipe file: ${detectFileType(filePath)}, Ukuran: ${data.size ? (data.size/1024).toFixed(1) + " KB" : "—"}`;
 
     applySyntaxStyle(filePath, textarea);
+  } else {
+    alert("Gagal memuat isi file.");
   }
 }
 
-// 🔄 Reload file aktif
 async function reloadFile() {
-  const path = activeFilePath;
-  if (!path) return alert("Tidak ada file aktif untuk dimuat ulang!");
-  await loadFile(path);
+  if (!activeFilePath) return alert("Tidak ada file aktif untuk dimuat ulang!");
+  await loadFile(activeFilePath);
   alert("🔄 File dimuat ulang!");
 }
 
-// Simpan perubahan file
 async function updateFile() {
   const owner = document.getElementById("owner").value;
   const repo = document.getElementById("repoSelect").value;
@@ -231,24 +231,19 @@ async function updateFile() {
   const token = getToken();
   const filePath = localStorage.getItem("last_path");
   const sha = localStorage.getItem("last_sha");
+  if (!filePath) return alert("Tidak ada file untuk disimpan.");
   const content = btoa(document.getElementById("fileContent").value);
 
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`, {
     method: "PUT",
-    headers: {
-      Authorization: `token ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      message: `Update ${filePath} via Web Editor`,
-      content, sha, branch
-    })
+    headers: { Authorization: `token ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: `Update ${filePath} via Web Editor`, content, sha, branch })
   });
   const data = await res.json();
-  alert(data.commit ? "✅ File berhasil diperbarui!" : "❌ Gagal menyimpan file!");
+  if (data && data.commit) alert("✅ File berhasil diperbarui!");
+  else alert("❌ Gagal menyimpan file!");
 }
 
-// Token Management
 function saveToken() {
   const token = document.getElementById("token").value;
   if (!token) return alert("Masukkan token!");
@@ -264,54 +259,50 @@ function clearToken() {
   showTokenStatus(false);
 }
 
-// Deteksi tipe file berdasarkan ekstensi
 function detectFileType(path) {
-  const ext = path.split(".").pop().toLowerCase();
-  const types = {
-    html: "HTML",
-    css: "CSS",
-    js: "JavaScript",
-    json: "JSON",
-    md: "Markdown",
-    txt: "Teks biasa"
-  };
-  return types[ext] || "Lainnya";
+  const name = String(path).split('/').pop();
+  const parts = name.split('.');
+  let ext = parts.length > 1 ? parts.pop().toLowerCase() : "";
+  const types = { html:"HTML", css:"CSS", js:"JavaScript", json:"JSON", md:"Markdown", txt:"Teks biasa" };
+  return types[ext] || (ext ? ext.toUpperCase() : "Teks");
 }
 
-// Ganti gaya editor berdasarkan tipe file
 function applySyntaxStyle(path, textarea) {
-  const ext = path.split(".").pop().toLowerCase();
-  if (["html", "css", "js", "json", "md"].includes(ext)) {
-    textarea.style.background = "#fefefc";
-    textarea.style.color = "#1a1a1a";
-    textarea.style.fontFamily = "monospace";
-  } else {
-    textarea.style.background = "#fff";
-    textarea.style.color = "#222";
-    textarea.style.fontFamily = "Arial, sans-serif";
+  const ext = path.split('.').pop().toLowerCase();
+  let style = { background:"#fff", color:"#222", fontFamily:"Arial,sans-serif" };
+  if (["html","css","js","json","md"].includes(ext)) {
+    style.background = "#f9fbff";
+    style.fontFamily = "Courier New, monospace";
   }
+  textarea.style.background = style.background;
+  textarea.style.color = style.color;
+  textarea.style.fontFamily = style.fontFamily;
 }
 
-// 🔹 Tombol hapus isi editor
 function clearEditor() {
-  if (confirm("Hapus semua isi editor?")) {
-    document.getElementById("fileContent").value = "";
-  }
+  if (confirm("Hapus semua isi editor?")) document.getElementById("fileContent").value = "";
 }
 
-// 🔹 Tombol paste clipboard
 async function pasteFromClipboard() {
   try {
     const text = await navigator.clipboard.readText();
-    const textarea = document.getElementById("fileContent");
-    textarea.value += text;
-    alert("✅ Teks berhasil di-paste dari clipboard!");
-  } catch (err) {
-    alert("❌ Gagal membaca clipboard. Pastikan browser mengizinkan akses clipboard.");
+    document.getElementById("fileContent").value += text;
+    alert("✅ Teks berhasil di-paste!");
+  } catch {
+    alert("❌ Gagal membaca clipboard.");
   }
 }
 
-// 🔹 Inisialisasi awal
+async function copyToClipboard() {
+  try {
+    const text = document.getElementById("fileContent").value;
+    await navigator.clipboard.writeText(text);
+    alert("✅ Disalin ke clipboard!");
+  } catch {
+    alert("❌ Gagal menyalin teks!");
+  }
+}
+
 async function initLoad() {
   const token = localStorage.getItem("github_token");
   if (!token) return showTokenStatus(false);
