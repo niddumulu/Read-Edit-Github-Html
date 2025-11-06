@@ -14,7 +14,15 @@
     border: 1px solid #ccc; border-radius: 5px; font-size: 1rem;
     box-sizing: border-box;
   }
-  textarea { min-height: 320px; resize: vertical; background: #fff; color: #222; font-family: Arial, sans-serif; }
+  textarea { 
+    min-height: 320px; 
+    resize: none; 
+    background: #fff; 
+    color: #222; 
+    font-family: Arial, sans-serif; 
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
   button { background: #4CAF50; color: #fff; border: none; cursor: pointer; }
   button:hover { background: #45a049; }
   .danger { background: #c0392b; }
@@ -24,7 +32,7 @@
   .filename { flex:1; font-weight:bold; color:#2c3e50; word-break: break-all; }
   #fileInfo { font-size:0.9em; color:#555; margin-top:6px; }
   @media (max-width:480px) {
-    .toolbar { gap:6px; }
+    .toolbar { gap:6px; flex-direction: column; align-items: stretch; }
     button { padding:8px; font-size:0.95rem; }
   }
 </style>
@@ -35,29 +43,29 @@
 
   <input type="password" id="token" placeholder="Masukkan GitHub Token">
   <div id="tokenStatus"></div>
-  <button onclick="saveToken()">ð¾ Simpan Token</button>
-  <button onclick="clearToken()" class="danger">â Hapus Token</button>
+  <button onclick="saveToken()">💾 Simpan Token</button>
+  <button onclick="clearToken()" class="danger">❌ Hapus Token</button>
 
   <input type="text" id="owner" placeholder="Username" readonly>
   <select id="repoSelect"><option>Menunggu...</option></select>
   <input type="text" id="branch" value="main" />
-  <div id="loading">â³ Memuat data...</div>
+  <div id="loading">⏳ Memuat data...</div>
 
   <select id="fileList" onchange="onSelectFile()"><option>Menunggu...</option></select>
-  <button id="backButton" onclick="goBack()" style="display:none;background:#777;">â¬ï¸ Kembali</button>
+  <button id="backButton" onclick="goBack()" style="display:none;background:#777;">⬅️ Kembali</button>
 
   <!-- Toolbar Editor -->
   <div class="toolbar">
     <div class="filename" id="activeFile">Tidak ada file aktif</div>
-    <button onclick="reloadFile()" style="background:#6c5ce7;">ð Reload</button>
-    <button onclick="clearEditor()" style="background:#e74c3c;">ð§¹ Hapus</button>
-    <button onclick="pasteFromClipboard()" style="background:#3498db;">ð Paste</button>
-    <button onclick="copyToClipboard()" style="background:#27ae60;">ð Copy</button>
+    <button onclick="reloadFile()" style="background:#6c5ce7;">🔄 Reload</button>
+    <button onclick="clearEditor()" style="background:#e74c3c;">🧹 Hapus</button>
+    <button onclick="pasteFromClipboard()" style="background:#3498db;">📋 Paste</button>
+    <button onclick="copyToClipboard()" style="background:#27ae60;">📄 Copy</button>
   </div>
   <div id="fileInfo"></div>
 
   <textarea id="fileContent" placeholder="Isi file..."></textarea>
-  <button onclick="updateFile()">ð Simpan ke GitHub</button>
+  <button onclick="updateFile()">🚀 Simpan ke GitHub</button>
 </div>
 
 <script>
@@ -70,7 +78,7 @@ function getToken() {
 
 function showTokenStatus(saved) {
   const el = document.getElementById("tokenStatus");
-  el.textContent = saved ? "â Token tersimpan" : "â Token belum tersimpan";
+  el.textContent = saved ? "✅ Token tersimpan" : "❌ Token belum tersimpan";
   el.style.color = saved ? "green" : "red";
 }
 
@@ -126,6 +134,10 @@ async function loadRepos() {
   };
 
   await loadFileList();
+
+  // Auto-load file terakhir
+  const lastPath = localStorage.getItem("last_path");
+  if (lastPath) await loadFile(lastPath);
 }
 
 async function loadFileList(path = "") {
@@ -139,7 +151,7 @@ async function loadFileList(path = "") {
   if (!owner || !repo || !token) return;
 
   loading.style.display = "block";
-  fileList.innerHTML = "<option>â³ Memuat...</option>";
+  fileList.innerHTML = "<option>⏳ Memuat...</option>";
 
   const url = path
     ? `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`
@@ -155,7 +167,7 @@ async function loadFileList(path = "") {
     data.forEach(item => {
       const opt = document.createElement("option");
       opt.value = item.path;
-      opt.textContent = item.type === "dir" ? "ð " + item.name : "ð " + item.name;
+      opt.textContent = item.type === "dir" ? "📁 " + item.name : "📄 " + item.name;
       fileList.appendChild(opt);
     });
 
@@ -165,7 +177,7 @@ async function loadFileList(path = "") {
     const firstFile = data.find(i => i.type === "file");
     if (firstFile) await loadFile(firstFile.path);
   } catch (err) {
-    fileList.innerHTML = "<option>â Gagal memuat file</option>";
+    fileList.innerHTML = "<option>❌ Gagal memuat file</option>";
   }
 
   loading.style.display = "none";
@@ -182,7 +194,7 @@ function onSelectFile() {
   const selected = document.getElementById("fileList").selectedOptions[0];
   if (!selected) return;
   const value = selected.value;
-  if (selected.textContent && selected.textContent.startsWith("ð")) {
+  if (selected.textContent && selected.textContent.startsWith("📁")) {
     loadFileList(value);
   } else {
     loadFile(value);
@@ -210,8 +222,8 @@ async function loadFile(filePath) {
     localStorage.setItem("last_sha", data.sha);
     activeFilePath = filePath;
 
-    document.getElementById("activeFile").textContent = `ð ${filePath}`;
-    document.getElementById("fileInfo").textContent = `Tipe file: ${detectFileType(filePath)}, Ukuran: ${data.size ? (data.size/1024).toFixed(1) + " KB" : "â"}`;
+    document.getElementById("activeFile").textContent = `📄 ${filePath}`;
+    document.getElementById("fileInfo").textContent = `Tipe file: ${detectFileType(filePath)}, Ukuran: ${data.size ? (data.size/1024).toFixed(1) + " KB" : "—"}`;
 
     applySyntaxStyle(filePath, textarea);
   } else {
@@ -222,7 +234,7 @@ async function loadFile(filePath) {
 async function reloadFile() {
   if (!activeFilePath) return alert("Tidak ada file aktif untuk dimuat ulang!");
   await loadFile(activeFilePath);
-  alert("ð File dimuat ulang!");
+  alert("🔄 File dimuat ulang!");
 }
 
 async function updateFile() {
@@ -241,8 +253,8 @@ async function updateFile() {
     body: JSON.stringify({ message: `Update ${filePath} via Web Editor`, content, sha, branch })
   });
   const data = await res.json();
-  if (data && data.commit) alert("â File berhasil diperbarui!");
-  else alert("â Gagal menyimpan file!");
+  if (data && data.commit) alert("✅ File berhasil diperbarui!");
+  else alert("❌ Gagal menyimpan file!");
 }
 
 function saveToken() {
@@ -272,7 +284,8 @@ function applySyntaxStyle(path, textarea) {
   const ext = path.split('.').pop().toLowerCase();
   let style = { background:"#fff", color:"#222", fontFamily:"Arial,sans-serif" };
   if (["html","css","js","json","md"].includes(ext)) {
-    style.background = "#f9fbff";
+    style.background = "#f4f7fb";
+    style.color = "#2c3e50";
     style.fontFamily = "Courier New, monospace";
   }
   textarea.style.background = style.background;
@@ -284,14 +297,12 @@ function clearEditor() {
   if (confirm("Hapus semua isi editor?")) document.getElementById("fileContent").value = "";
 }
 
-// 🔹 Fungsi agar textarea otomatis menyesuaikan tinggi isi
+// 🔹 Auto-resize textarea
 function autoResizeTextarea() {
   const ta = document.getElementById("fileContent");
-  ta.style.height = "auto"; // reset dulu
-  ta.style.height = (ta.scrollHeight + 10) + "px"; // sesuaikan tinggi
+  ta.style.height = "auto";
+  ta.style.height = (ta.scrollHeight + 10) + "px";
 }
-
-// Jalankan setiap kali user mengetik
 document.addEventListener("input", e => {
   if (e.target.id === "fileContent") autoResizeTextarea();
 });
@@ -300,9 +311,10 @@ async function pasteFromClipboard() {
   try {
     const text = await navigator.clipboard.readText();
     document.getElementById("fileContent").value += text;
-    alert("â Teks berhasil di-paste!");
+    autoResizeTextarea();
+    alert("✅ Teks berhasil di-paste!");
   } catch {
-    alert("â Gagal membaca clipboard.");
+    alert("❌ Gagal membaca clipboard.");
   }
 }
 
@@ -310,9 +322,9 @@ async function copyToClipboard() {
   try {
     const text = document.getElementById("fileContent").value;
     await navigator.clipboard.writeText(text);
-    alert("â Disalin ke clipboard!");
+    alert("✅ Disalin ke clipboard!");
   } catch {
-    alert("â Gagal menyalin teks!");
+    alert("❌ Gagal menyalin teks!");
   }
 }
 
