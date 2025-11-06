@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edit File GitHub + Folder + Breadcrumb</title>
+<style>
+  body { font-family: Arial, sans-serif; background-color: #f8f8f8; margin: 0; padding: 0; color: #333; }
+  h1 { text-align: center; margin-top: 30px; color: #2c3e50; }
+  .container {
+    width: 90%; max-width: 900px; margin: 20px auto; padding: 20px;
+    background-color: white; border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  h2 { color: #2980b9; font-size: 1.3rem; }
+  select, textarea, input {
+    width: 100%; margin-top: 10px; padding: 10px;
+    font-size: 1rem; border: 1px solid #ddd;
+    border-radius: 5px; background-color: #fafafa;
+  }
+  textarea { min-height: 200px; resize: vertical; }
+  button {
+    display: inline-block; margin-top: 15px; padding: 10px 20px;
+    font-size: 1rem; background-color: #4CAF50; color: white;
+    border: none; border-radius: 5px; cursor: pointer;
+    transition: background-color .3s;
+  }
+  button:hover { background-color: #45a049; }
+  .footer { text-align:center; margin-top:30px; font-size:.9rem; color:#7f8c8d; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .row > * { flex:1; min-width:120px; }
+  #tokenStatus { margin-top: 5px; font-size: 0.9rem; color: green; }
+
+  /* breadcrumb */
+  #breadcrumb {
+    margin-top: 10px;
+    background: #eef6ff;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-size: 0.95rem;
+  }
+  #breadcrumb span {
+    color: #0077cc;
+    cursor: pointer;
+  }
+  #breadcrumb span:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+<h1>Editor GitHub dengan Navigasi Folder</h1>
+
+<div class="container">
+  <h2>Token GitHub</h2>
+  <input type="password" id="token" placeholder="Masukkan token GitHub kamu">
+  <div id="tokenStatus"></div>
+  <button onclick="saveToken()">💾 Simpan Token</button>
+  <button onclick="clearToken()">❌ Hapus Token</button>
+
+  <h2>File & Folder</h2>
+  <div class="row">
+    <input type="text" id="owner" value="niddumulu" placeholder="Username">
+    <input type="text" id="repo" value="shope-tools" placeholder="Nama Repo">
+    <input type="text" id="branch" value="main" placeholder="Branch">
+    <button onclick="loadFileList()">🔄 Muat File</button>
+  </div>
+
+  <div id="breadcrumb">📁 Posisi saat ini: <span onclick="loadFileList()">root</span></div>
+
+  <select id="fileList" onchange="onSelectFile()">
+    <option value="">-- pilih file atau folder --</option>
+  </select>
+
+  <h2>Isi File</h2>
+  <textarea id="fileContent" placeholder="Konten file akan muncul di sini..."></textarea>
+  <button onclick="updateFile()">💾 Simpan ke GitHub</button>
+</div>
+
+<div class="footer">
+  <p>🔧 Folder support + breadcrumb navigasi + token auto tersimpan</p>
+</div>
+
+<script>
+  let currentPath = "";
+
+  function getToken() {
+    return localStorage.getItem("github_token") || document.getElementById("token").value;
+  }
+
+  function saveToken() {
+    const token = document.getElementById("token").value;
+    if (token) {
+      localStorage.setItem("github_token", token);
+      showTokenStatus(true);
+    }
+  }
+
+  function clearToken() {
+    localStorage.removeItem("github_token");
+    document.getElementById("token").value = "";
+    showTokenStatus(false);
+  }
+
+  function showTokenStatus(saved) {
+    const el = document.getElementById("tokenStatus");
+    el.textContent = saved ? "✅ Token tersimpan di browser" : "❌ Token belum tersimpan";
+  }
+
+  async function loadFileList(path = "") {
+    const owner = document.getElementById("owner").value;
+    const repo = document.getElementById("repo").value;
+    const branch = document.getElementById("branch").value;
+    const token = getToken();
+
+    const url = path
+      ? `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`
+      : `https://api.github.com/repos/${owner}/${repo}/contents?ref=${branch}`;
+
+    const res = await fetch(url, { headers: { Authorization: `token ${token}` } });
+    const data = await res.json();
+
+    const fileList = document.getElementById("fileList");
+    fileList.innerHTML = '<option value="">-- pilih file atau folder --</option>';
+
+    if (Array.isArray(data)) {
+      data.forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item.path;
+        opt.textContent = item.type === "dir" ? "📁 " + item.name : "📄 " + item.name;
+        fileList.appendChild(opt);
+      });
+      currentPath = path;
+      updateBreadcrumb();
+    } else {
+      alert("Gagal memuat daftar file. Pastikan token dan repo benar.");
+    }
+  }
+
+  function updateBreadcrumb() {
+    const breadcrumb = document.getElementById("breadcrumb");
+    if (!currentPath) {
+      breadcrumb.innerHTML = `📁 Posisi saat ini: <span onclick="loadFileList()">root</span>`;
+      return;
+    }
+
+    const parts = currentPath.split("/");
+    let html = `📁 Posisi saat ini: <span onclick="loadFileList()">root</span>`;
+    let path = "";
+
+    parts.forEach((part, i) => {
+      path += (i > 0 ? "/" : "") + part;
+      html += ` / <span onclick="loadFileList('${path}')">${part}</span>`;
+    });
+
+    breadcrumb.innerHTML = html;
+  }
+
+  function onSelectFile() {
+    const selected = document.getElementById("fileList").selectedOptions[0];
+    if (!selected) return;
+    const value = selected.value;
+    if (selected.textContent.startsWith("📁")) {
+      loadFileList(value);
+    } else {
+      loadFile(value);
+    }
+  }
+
+  async function loadFile(filePath) {
+    const owner = document.getElementById("owner").value;
+    const repo = document.getElementById("repo").value;
+    const branch = document.getElementById("branch").value;
+    const token = getToken();
+    if (!filePath) return;
+
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
+      headers: { Authorization: `token ${token}` }
+    });
+    const data = await res.json();
+    if (data.content) {
+      document.getElementById("fileContent").value = atob(data.content);
+      localStorage.setItem("last_sha", data.sha);
+      localStorage.setItem("last_path", filePath);
+    } else {
+      alert("Gagal memuat isi file.");
+    }
+  }
+
+  async function updateFile() {
+    const owner = document.getElementById("owner").value;
+    const repo = document.getElementById("repo").value;
+    const branch = document.getElementById("branch").value;
+    const filePath = localStorage.getItem("last_path");
+    const token = getToken();
+    const content = btoa(document.getElementById("fileContent").value);
+    const sha = localStorage.getItem("last_sha");
+
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": `token ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: `Update ${filePath} via web editor`,
+        content: content,
+        sha: sha,
+        branch: branch
+      })
+    });
+    const data = await res.json();
+    if (data.commit) {
+      alert("✅ File berhasil diperbarui di GitHub!");
+    } else {
+      alert("❌ Gagal memperbarui file: " + JSON.stringify(data));
+    }
+  }
+
+  // Saat halaman pertama kali dimuat
+  window.onload = () => {
+    const token = localStorage.getItem("github_token");
+    if (token) document.getElementById("token").value = token;
+    showTokenStatus(!!token);
+  };
+</script>
+</body>
+</html>
